@@ -1,0 +1,7 @@
+region_id,year,precipitation,temperature,conflict_events
+ETH001,2010,150,25,0
+ETH001,2011,80,28,0
+ETH001,2012,160,24,1
+ETH002,2010,140,26,0
+ETH002,2011,70,29,0
+ETH002,2012,155,25,0
