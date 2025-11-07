@@ -225,3 +225,230 @@ st.pyplot(fig)
 # Data summary
 with st.expander("📋 View Raw Data"):
     st.dataframe(data[data['fnid'] == target_region], use_container_width=True)
+def ssp_analysis_tab():
+    st.header("🌍 SSP Climate Scenario Analysis")
+    st.markdown("""
+    Analyze future agricultural outcomes under different Shared Socioeconomic Pathways (SSPs).
+    These scenarios represent alternative futures with different climate and development trajectories.
+    """)
+    
+    # Region selection
+    regions = data['fnid'].unique()
+    selected_region = st.selectbox("Select Region", regions)
+    
+    # Year selection
+    target_year = st.slider("Target Year", 2025, 2050, 2030, 5)
+    
+    # SSP scenario selection
+    selected_ssps = st.multiselect(
+        "Select SSP Scenarios to Compare",
+        ["SSP1 - Sustainability", "SSP2 - Middle Road", "SSP3 - Regional Rivalry", 
+         "SSP4 - Inequality", "SSP5 - Fossil-Fueled"],
+        default=["SSP1 - Sustainability", "SSP2 - Middle Road", "SSP3 - Regional Rivalry"]
+    )
+    
+    # Map display names to internal names
+    ssp_mapping = {
+        "SSP1 - Sustainability": "SSP1",
+        "SSP2 - Middle Road": "SSP2", 
+        "SSP3 - Regional Rivalry": "SSP3",
+        "SSP4 - Inequality": "SSP4",
+        "SSP5 - Fossil-Fueled": "SSP5"
+    }
+    
+    if st.button("Run SSP Analysis", type="primary"):
+        with st.spinner("Running SSP scenario analysis..."):
+            # Initialize SSP analyzer
+            ssp_analyzer = SSPAnalyzer(model)
+            ssp_analyzer.load_ssp_scenarios()
+            
+            # Run analysis
+            region_data = data[data['fnid'] == selected_region]
+            scenarios = ssp_analyzer.generate_future_scenarios(
+                region_data, selected_region, [target_year])
+            
+            impacts = ssp_analyzer.calculate_ssp_impacts(selected_region)
+            
+            # Display results
+            display_ssp_results(impacts, selected_ssps, ssp_mapping, target_year)
+
+def display_ssp_results(impacts, selected_ssps, ssp_mapping, target_year):
+    """Display SSP analysis results"""
+    
+    st.subheader("📊 Scenario Comparison")
+    
+    # Create comparison table
+    comparison_data = []
+    for display_name in selected_ssps:
+        ssp = ssp_mapping[display_name]
+        if ssp in impacts and target_year in impacts[ssp]:
+            metrics = impacts[ssp][target_year]
+            comparison_data.append({
+                'Scenario': display_name,
+                'Projected Yield': f"{metrics['mean_yield']:.2f} t/ha",
+                'Change from Baseline': f"{metrics['yield_change_pct']:+.1f}%",
+                'Drought Risk': f"{metrics['drought_risk']:.1%}",
+                'Conflict Risk': f"{metrics['conflict_risk']:.1%}",
+                'Severe Decline Probability': f"{metrics['probability_40pct_decline']:.1%}"
+            })
+    
+    if comparison_data:
+        st.dataframe(pd.DataFrame(comparison_data), use_container_width=True)
+        
+        # Visualization
+        st.subheader("📈 Yield Projections by Scenario")
+        
+        fig, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2, figsize=(15, 12))
+        
+        # Plot 1: Yield projections
+        scenarios = []
+        yields = []
+        colors = ['#2ecc71', '#3498db', '#e74c3c', '#f39c12', '#9b59b6']
+        
+        for i, display_name in enumerate(selected_ssps):
+            ssp = ssp_mapping[display_name]
+            if ssp in impacts and target_year in impacts[ssp]:
+                scenarios.append(display_name.split(' - ')[0])
+                yields.append(impacts[ssp][target_year]['mean_yield'])
+        
+        bars = ax1.bar(scenarios, yields, color=colors[:len(scenarios)], alpha=0.8)
+        ax1.set_ylabel('Yield (tons/ha)')
+        ax1.set_title(f'Projected Maize Yields in {target_year}')
+        ax1.tick_params(axis='x', rotation=45)
+        
+        for bar, yield_val in zip(bars, yields):
+            height = bar.get_height()
+            ax1.text(bar.get_x() + bar.get_width()/2., height + 0.05,
+                    f'{yield_val:.2f}', ha='center', va='bottom', fontweight='bold')
+        
+        # Plot 2: Risk comparison
+        risk_types = ['Drought', 'Conflict', 'Heat Stress']
+        risk_data = {ssp: [] for ssp in scenarios}
+        
+        for display_name in selected_ssps:
+            ssp = ssp_mapping[display_name]
+            short_name = display_name.split(' - ')[0]
+            if ssp in impacts and target_year in impacts[ssp]:
+                risk_data[short_name] = [
+                    impacts[ssp][target_year]['drought_risk'],
+                    impacts[ssp][target_year]['conflict_risk'], 
+                    impacts[ssp][target_year]['heat_risk']
+                ]
+        
+        x = np.arange(len(risk_types))
+        width = 0.8 / len(scenarios)
+        
+        for i, (scenario, risks) in enumerate(risk_data.items()):
+            offset = width * i - width * (len(scenarios) - 1) / 2
+            ax2.bar(x + offset, risks, width, label=scenario, 
+                   color=colors[i], alpha=0.8)
+        
+        ax2.set_xlabel('Risk Type')
+        ax2.set_ylabel('Probability')
+        ax2.set_title('Risk Profile by Scenario')
+        ax2.set_xticks(x)
+        ax2.set_xticklabels(risk_types)
+        ax2.legend()
+        ax2.set_ylim(0, 1)
+        
+        # Plot 3: Yield change over time
+        years = [2025, 2030, 2035, 2040, 2045, 2050]
+        for display_name in selected_ssps:
+            ssp = ssp_mapping[display_name]
+            short_name = display_name.split(' - ')[0]
+            changes = []
+            for year in years:
+                if ssp in impacts and year in impacts[ssp]:
+                    changes.append(impacts[ssp][year]['yield_change_pct'])
+            if changes:
+                ax3.plot(years, changes, marker='o', label=short_name, linewidth=2)
+        
+        ax3.axhline(y=0, color='black', linestyle='--', alpha=0.3)
+        ax3.set_xlabel('Year')
+        ax3.set_ylabel('Yield Change (%)')
+        ax3.set_title('Yield Trajectory 2025-2050')
+        ax3.legend()
+        ax3.grid(True, alpha=0.3)
+        
+        # Plot 4: Decline probabilities
+        decline_data = []
+        labels = []
+        for display_name in selected_ssps:
+            ssp = ssp_mapping[display_name]
+            short_name = display_name.split(' - ')[0]
+            if ssp in impacts and target_year in impacts[ssp]:
+                decline_data.append([
+                    impacts[ssp][target_year]['probability_20pct_decline'],
+                    impacts[ssp][target_year]['probability_40pct_decline']
+                ])
+                labels.append(short_name)
+        
+        if decline_data:
+            decline_data = np.array(decline_data)
+            x = np.arange(len(labels))
+            ax4.bar(x - 0.2, decline_data[:, 0], 0.4, label='>20% Decline', alpha=0.8)
+            ax4.bar(x + 0.2, decline_data[:, 1], 0.4, label='>40% Decline', alpha=0.8)
+            ax4.set_xlabel('Scenario')
+            ax4.set_ylabel('Probability')
+            ax4.set_title('Probability of Yield Declines')
+            ax4.set_xticks(x)
+            ax4.set_xticklabels(labels)
+            ax4.legend()
+        
+        plt.tight_layout()
+        st.pyplot(fig)
+        
+        # Policy recommendations
+        st.subheader("💡 Policy Recommendations")
+        
+        best_scenario = max(selected_ssps, 
+                          key=lambda x: impacts[ssp_mapping[x]][target_year]['mean_yield'])
+        worst_scenario = min(selected_ssps, 
+                           key=lambda x: impacts[ssp_mapping[x]][target_year]['mean_yield'])
+        
+        best_ssp = ssp_mapping[best_scenario]
+        worst_ssp = ssp_mapping[worst_scenario]
+        
+        st.info(f"""
+        **Key Insights for {selected_region}:**
+        
+        • **Most favorable scenario:** {best_scenario} ({impacts[best_ssp][target_year]['mean_yield']:.2f} t/ha)
+        • **Most challenging scenario:** {worst_scenario} ({impacts[worst_ssp][target_year]['mean_yield']:.2f} t/ha)
+        • **Performance gap:** {impacts[best_ssp][target_year]['mean_yield'] - impacts[worst_ssp][target_year]['mean_yield']:.2f} t/ha
+        
+        **Recommended focus areas:**
+        {get_policy_recommendations(impacts, best_ssp, worst_ssp, target_year)}
+        """)
+
+def get_policy_recommendations(impacts, best_ssp, worst_ssp, target_year):
+    """Generate policy recommendations based on scenario analysis"""
+    
+    recommendations = []
+    
+    # Analyze what makes the best scenario successful
+    best_metrics = impacts[best_ssp][target_year]
+    worst_metrics = impacts[worst_ssp][target_year]
+    
+    if best_metrics['drought_risk'] < worst_metrics['drought_risk']:
+        recommendations.append("• **Invest in drought resilience** (irrigation, drought-tolerant crops)")
+    
+    if best_metrics['conflict_risk'] < worst_metrics['conflict_risk']:
+        recommendations.append("• **Strengthen conflict prevention** and peacebuilding programs")
+    
+    if best_metrics['heat_risk'] < worst_metrics['heat_risk']:
+        recommendations.append("• **Develop heat-tolerant crop varieties** and adjust planting calendars")
+    
+    if len(recommendations) == 0:
+        recommendations.append("• **Focus on general agricultural development** and technology adoption")
+    
+    return "\n".join(recommendations)
+
+# Add the new tab to your main app
+def main():
+    st.sidebar.title("Navigation")
+    page = st.sidebar.radio("Go to", ["Counterfactual Analysis", "SSP Scenario Analysis"])
+    
+    if page == "Counterfactual Analysis":
+        counterfactual_analysis_tab()
+    else:
+        ssp_analysis_tab()
