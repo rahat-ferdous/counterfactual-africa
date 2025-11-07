@@ -98,3 +98,44 @@ class CounterfactualModel:
         self.scaler = saved_data['scaler']
         self.is_trained = True
         print(f"Model loaded from {model_path}")
+# Add this method to your CounterfactualModel class
+
+def predict_future_scenario(self, future_conditions):
+    """
+    Predict yields for future climate scenarios
+    future_conditions: DataFrame with future climate parameters
+    """
+    if not self.is_trained:
+        raise ValueError("Model must be trained before prediction")
+    
+    # Prepare features for future prediction
+    X_future = self.prepare_future_features(future_conditions)
+    
+    # Scale features
+    X_scaled = self.scaler.transform(X_future)
+    
+    predictions = self.model.predict(X_scaled)
+    
+    # Apply realistic bounds for future scenarios
+    predictions = np.clip(predictions, 0.3, 6.0)  # Slightly wider bounds for future
+    
+    return predictions
+
+def prepare_future_features(self, df):
+    """Prepare features for future scenarios"""
+    feature_columns = [
+        'precipitation', 'temperature', 'soil_quality',
+        'drought_shock', 'conflict_shock', 'heat_shock', 'harvest_year'
+    ]
+    
+    # Ensure all required columns are present
+    for col in feature_columns:
+        if col not in df.columns:
+            if col == 'soil_quality':
+                df[col] = 0.7  # Default soil quality
+            elif col in ['drought_shock', 'conflict_shock', 'heat_shock']:
+                df[col] = 0  # Default no shocks
+            else:
+                df[col] = 0
+    
+    return df[feature_columns]
